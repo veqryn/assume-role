@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"gopkg.in/yaml.v2"
-	"runtime"
 )
 
 var configFilePath = fmt.Sprintf("%s/.aws/roles", os.Getenv("HOME"))
@@ -34,11 +34,17 @@ func init() {
 func main() {
 	var (
 		duration = flag.Duration("duration", time.Hour, "The duration that the credentials will be valid for.")
+		format   = flag.String("format", "", "Format can be 'bash' or 'powershell'. Default format is based on operating system.")
 	)
 
 	flag.Parse()
 	argv := flag.Args()
 	if len(argv) < 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if *format != "" && *format != "bash" && *format != "powershell" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -68,6 +74,7 @@ func main() {
 
 		creds, err = assumeRole(roleConfig.Role, roleConfig.MFA, *duration)
 		must(err)
+
 	} else {
 		cleanEnv()
 		creds, err = assumeProfile(role)
@@ -75,9 +82,9 @@ func main() {
 	}
 
 	if len(args) == 0 {
-		if runtime.GOOS == "windows" {
+		if *format == "powershell" || (*format == "" && runtime.GOOS == "windows") {
 			printWindowsCredentials(role, creds)
-		} else {
+		} else { // *format == "bash"
 			printCredentials(role, creds)
 		}
 		return
@@ -209,8 +216,8 @@ func loadConfig() (config, error) {
 		return nil, err
 	}
 
-	config := make(config)
-	return config, yaml.Unmarshal(raw, &config)
+	roleConfig := make(config)
+	return roleConfig, yaml.Unmarshal(raw, &roleConfig)
 }
 
 func must(err error) {
